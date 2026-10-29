@@ -363,6 +363,9 @@ static void IN_MouseMove( void )
 
 	VGui_MouseMove( x, y );
 
+	if( cls.key_dest == key_console )
+		Con_MouseMove( x, y );
+
 	// if the menu is visible, move the menu cursor
 	UI_MouseMove( x, y );
 }
@@ -601,6 +604,22 @@ static void IN_CollectInput( float *forward, float *side, float *pitch, float *y
 	}
 
 }
+
+#if XASH_ENGINE_TESTS && !XASH_NO_TOUCH
+#include "tests.h"
+
+void Test_CollectTouchInput( float *pitch, float *yaw, qboolean filter )
+{
+	float forward = 0, side = 0, old_filter = look_filter.value;
+	struct inputstate_s saved = inputstate;
+
+	inputstate.lastpitch = inputstate.lastyaw = 0;
+	look_filter.value = filter;
+	IN_CollectInput( &forward, &side, pitch, yaw, false );
+	inputstate = saved;
+	look_filter.value = old_filter;
+}
+#endif
 
 /*
 ================

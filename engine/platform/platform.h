@@ -57,6 +57,7 @@ int IOS_GetArgs( char ***argv );
 const char *IOS_GetDocsDir( void );
 const char *IOS_GetExecDir( void );
 void IOS_LaunchDialog( void );
+void IOS_GetWindowInsets( void *window, float insets[4] );
 #endif // TARGET_OS_IOS
 
 #if XASH_WIN32 || XASH_LINUX
@@ -76,9 +77,14 @@ qboolean Platform_CheckLibraryDirectDependency( const byte *data, size_t size, c
 #endif
 
 #if XASH_POSIX
+double Posix_GetCPUTime( void );
 void Posix_Daemonize( void );
 void Posix_SetupSigtermHandling( void );
 char *Posix_Input( void );
+void Posix_InitConsole( void );
+void Posix_ShutdownConsole( void );
+void Posix_ConsolePrintBegin( void );
+void Posix_ConsolePrintEnd( const char *msg );
 // returns the number of stable network device MAC addresses, each packed into low 48 bits
 int Posix_GetNetDeviceAddresses( uint64_t *addresses, int max );
 #endif
@@ -100,11 +106,13 @@ const char *Android_LoadID( void );
 void Android_SaveID( const char *id );
 void Android_Init( void );
 void *Android_GetNativeObject( const char *name );
+void Android_GetWindowInsets( float insets[4] );
 int Android_GetKeyboardHeight( void );
 void Android_Shutdown( void );
 #endif
 
 #if XASH_WIN32
+double Win32_GetCPUTime( void );
 void Win32_Init( qboolean con_showalways );
 void Win32_Shutdown( void );
 qboolean Win32_NanoSleep( int nsec );
@@ -116,6 +124,18 @@ void Wcon_DisableInput( void );
 char *Wcon_Input( void );
 void Wcon_WinPrint( const char *pMsg );
 #endif
+
+// returns the total CPU time used by this process, in seconds
+static inline double Platform_GetCPUTime( void )
+{
+#if XASH_WIN32
+	return Win32_GetCPUTime();
+#elif XASH_POSIX && HAVE_GETRUSAGE
+	return Posix_GetCPUTime();
+#else
+	return 0.0;
+#endif
+}
 
 #if XASH_NSWITCH
 void NSwitch_Init( void );
@@ -153,6 +173,11 @@ static inline void Platform_Init( qboolean con_showalways )
 	SDLash_Init( );
 #endif
 
+#if XASH_POSIX && !XASH_MOBILE_PLATFORM && !XASH_LOW_MEMORY
+	// after SDL, so it can install its Ctrl-C handler first
+	Posix_InitConsole( );
+#endif
+
 #if XASH_ANDROID
 	Android_Init( );
 #elif XASH_NSWITCH
@@ -180,6 +205,10 @@ static inline void Platform_Shutdown( void )
 	Win32_Shutdown( );
 #elif XASH_LINUX
 	Linux_Shutdown( );
+#endif
+
+#if XASH_POSIX && !XASH_MOBILE_PLATFORM && !XASH_LOW_MEMORY
+	Posix_ShutdownConsole( );
 #endif
 
 #if XASH_SDL
@@ -356,6 +385,21 @@ static inline char *Platform_Input( void )
 #endif
 }
 
+// hide and redraw the terminal input line around stdout prints
+static inline void Platform_ConsolePrintBegin( void )
+{
+#if XASH_POSIX && !XASH_MOBILE_PLATFORM && !XASH_LOW_MEMORY
+	Posix_ConsolePrintBegin();
+#endif
+}
+
+static inline void Platform_ConsolePrintEnd( const char *msg )
+{
+#if XASH_POSIX && !XASH_MOBILE_PLATFORM && !XASH_LOW_MEMORY
+	Posix_ConsolePrintEnd( msg );
+#endif
+}
+
 /*
 ==============================================================================
 
@@ -520,5 +564,21 @@ qboolean VoiceCapture_Lock( qboolean lock );
 	#define INLINE_RAISE(x) raise(x)
 	#define INLINE_NANOSLEEP1() sleep(1)
 #endif // generic
+
+// safe area insets as fractions of the window size: left, top, right, bottom
+#if XASH_SDL == 3
+void Platform_GetWindowInsets( void *window, float insets[4] );
+#else
+static inline void Platform_GetWindowInsets( void *window, float insets[4] )
+{
+#if XASH_IOS && XASH_SDL == 2
+	IOS_GetWindowInsets( window, insets );
+#elif XASH_ANDROID && XASH_SDL == 2
+	Android_GetWindowInsets( insets );
+#else
+	insets[0] = insets[1] = insets[2] = insets[3] = 0.0f;
+#endif
+}
+#endif
 
 #endif // PLATFORM_H
